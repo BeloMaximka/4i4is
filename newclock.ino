@@ -22,7 +22,7 @@ GButton button3(8);
 #define CL_CENTER_X 4
 #define CL_CENTER_Y 4
 #define GN_CENTER_X 4
-#define GN_CENTER_Y 28
+#define GN_CENTER_Y 20
 
 const char* weekDays[7] = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
 const uint8_t daysInMonth[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
@@ -152,7 +152,7 @@ bool secPassed() {
   return false;
 }
 
-void UpdateTime() {
+void updateTime() {
   if (secPassed())
   {
     if (!timer.isPaused && !timer.isEnded) {
@@ -167,6 +167,14 @@ void UpdateTime() {
         stopwatch.isPaused = true;
       }
     }
+  }
+}
+
+void checkTime() {
+  updateTime();
+  if (timer.isEnded)
+  {
+
   }
 }
 
@@ -269,7 +277,7 @@ void showTime() {
   display.display();
 }
 
-void showGeneral(const char* text, TimeInfo time, byte state) {
+void showGeneral(const char* upText, const char* downText, TimeInfo time, byte state) {
   byte x = GN_CENTER_X; // 4
   byte y = GN_CENTER_Y; // 20
   display.clearDisplay();
@@ -282,9 +290,13 @@ void showGeneral(const char* text, TimeInfo time, byte state) {
   display.setTextSize(2);
   display.printf("%02d", time.second);
 
-  byte posX = getCenterPosX(text);
+  byte posX = getCenterPosX(upText);
   display.setCursor(posX, 0);
-  display.print(text);
+  display.print(upText);
+
+  posX = getCenterPosX(downText);
+  display.setCursor(posX, 48);
+  display.print(downText);
 
   showState(state, x, y, -1);
   display.display();
@@ -423,7 +435,7 @@ void setTimer(TimeInfo time = {}) {
         timer.isEnded = false;
         timer.isPaused = false;
 
-        showGeneral("Sync...", time, state);
+        showGeneral("Timer", "Sync...", time, state);
         while (!secPassed());
         resetButtons();
         return;
@@ -454,7 +466,7 @@ void setTimer(TimeInfo time = {}) {
         break;
       }
     }
-    showGeneral("Timer", time, state);
+    showGeneral("Timer", "Editing", time, state);
   }
 }
 
@@ -470,7 +482,7 @@ void mainMenu() {
       return;
     }
     else if (button3.isSingle()) {
-      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      inc(menuState, MENU_FIRST + 1, MENU_LAST - 1);
       return;
     }
   }
@@ -480,9 +492,10 @@ void timerMenu() {
   resetButtons();
   while (true)
   {
-    UpdateTime();
-    if (timer.isPaused) showGeneral("Timer(psd)", timer.time, -1);
-    else showGeneral("Timer", timer.time, -1);
+    updateTime();
+    if (timer.isPaused) showGeneral("Timer", "Paused", timer.time, -1);
+    else if (timer.isEnded) showGeneral("Timer", "Ended", timer.time, -1);
+    else showGeneral("Timer", "Running", timer.time, -1);
     tickbuttons();
     if (button1.isHold()) setTimer(timer.time);
     else if (button1.isSingle()) {
@@ -494,7 +507,7 @@ void timerMenu() {
       return;
     }
     else if (button3.isSingle()) {
-      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      inc(menuState, MENU_FIRST + 1, MENU_LAST - 1);
       return;
     }
   }
@@ -504,9 +517,10 @@ void stopwatchMenu() {
   resetButtons();
   while (true)
   {
-    UpdateTime();
-    if (stopwatch.isPaused && stopwatch.isStarted) showGeneral("Stwch psd", stopwatch.time, -1);
-    else showGeneral("Stopwatch", stopwatch.time, -1);
+    updateTime();
+    if (stopwatch.isPaused && stopwatch.isStarted) showGeneral("Stopwatch", "Paused", stopwatch.time, -1);
+    else if (!stopwatch.isStarted) showGeneral("Stopwatch", "Waiting", stopwatch.time, -1);
+    else showGeneral("Stopwatch", "Running", stopwatch.time, -1);
     tickbuttons();
     if (button1.isHold()) {
       stopwatch.isStarted = false;
@@ -524,7 +538,7 @@ void stopwatchMenu() {
       return;
     }
     else if (button3.isSingle()) {
-      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      inc(menuState, MENU_FIRST + 1, MENU_LAST - 1);
       return;
     }
   }

@@ -59,8 +59,6 @@ struct
   bool isStarted = false;
 } stopwatch;
 
-byte psec = -1;
-
 enum STATES
 {
   MAIN_YEAR,
@@ -71,6 +69,18 @@ enum STATES
   MAIN_MINUTE,
   MAIN_SECOND,
 };
+
+enum MENUS
+{
+  MENU_FIRST,
+  MENU_MAIN,
+  MENU_STOPWATCH,
+  MENU_TIMER,
+  MENU_LAST,
+};
+
+byte psec = -1;
+byte menuState = MENU_MAIN;
 
 void setupButtons() {
   button1.setDebounce(10); // 80
@@ -89,24 +99,6 @@ void resetButtons() {
   button2.resetStates();
   button3.resetStates();
 }
-// УДАЛИ
-long time2sec(byte h, byte m, byte s) {
-  return h * 60 + m * 60 + s;
-}
-
-long time2sec(TimeInfo t) {
-  return t.hour * 60 + t.minute * 60 + t.second;
-}
-
-TimeInfo sec2time(long sec) {
-  TimeInfo time;
-  time.hour = sec / 3600;
-  sec -= time.hour * 3600;
-  time.minute = sec / 60;
-  sec -= time.minute * 60;
-  time.second = sec;
-}
-// УДАЛИ ВЫШЕ
 
 bool incSec(TimeInfo& time) {
   if (time.second == 59)
@@ -332,7 +324,7 @@ void setTime() {
       time = {};
       state = MAIN_HOUR;
     }
-    else if (button1.isPress())
+    else if (button1.isSingle())
     {
       if (state == 6)
       {
@@ -346,11 +338,12 @@ void setTime() {
         DS.setHour(time.hour);
         DS.setMinute(time.minute);
         DS.setSecond(time.second);
+        resetButtons();
         return;
       }
       state++;
     }
-    else if (button2.isPress())
+    else if (button2.isSingle())
     {
       switch (state)
       {
@@ -378,7 +371,7 @@ void setTime() {
         break;
       }
     }
-    else if (button3.isPress())
+    else if (button3.isSingle())
     {
       switch (state)
       {
@@ -432,6 +425,7 @@ void setTimer(TimeInfo time = {}) {
 
         showGeneral("Sync...", time, state);
         while (!secPassed());
+        resetButtons();
         return;
       }
       state++;
@@ -471,8 +465,14 @@ void mainMenu() {
     showTime();
     tickbuttons();
     if (button1.isSingle()) setTime();
-    else if (button2.isSingle()) return;
-    else if (button3.isSingle()) return;
+    else if (button2.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+    else if (button3.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
   }
 }
 
@@ -489,8 +489,14 @@ void timerMenu() {
       if (timer.isEnded) setTimer(timer.time);
       else timer.isPaused = timer.isPaused ? false : true;
     }
-    else if (button2.isSingle()) return;
-    else if (button3.isSingle()) return;
+    else if (button2.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+    else if (button3.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
   }
 }
 
@@ -502,19 +508,25 @@ void stopwatchMenu() {
     if (stopwatch.isPaused && stopwatch.isStarted) showGeneral("Stwch psd", stopwatch.time, -1);
     else showGeneral("Stopwatch", stopwatch.time, -1);
     tickbuttons();
-    if (button1.isHold()) { 
+    if (button1.isHold()) {
       stopwatch.isStarted = false;
-      stopwatch.time = {}; 
+      stopwatch.time = {};
     }
     else if (button1.isSingle()) {
       if (stopwatch.isStarted)
       {
         stopwatch.isPaused = stopwatch.isPaused ? false : true;
       }
-      stopwatch.isStarted = true; 
+      stopwatch.isStarted = true;
     }
-    else if (button2.isSingle()) return;
-    else if (button3.isSingle()) return;
+    else if (button2.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+    else if (button3.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
   }
 }
 
@@ -532,7 +544,13 @@ void setup() {
 }
 
 void loop() {
-  stopwatchMenu();
-  timerMenu();
-  mainMenu();
+  switch (menuState)
+  {
+  case MENU_MAIN: mainMenu();
+    break;
+  case MENU_STOPWATCH: stopwatchMenu();
+    break;
+  case MENU_TIMER: timerMenu();
+    break;
+  }
 }

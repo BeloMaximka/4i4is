@@ -49,11 +49,46 @@ struct
 {
   TimeInfo time{};
   bool isPaused = false;
-  bool isStarted = false;
+  bool isEnded = true;
 } timer;
+
+struct
+{
+  TimeInfo time{};
+  bool isPaused = false;
+  bool isStarted = false;
+} stopwatch;
 
 byte psec = -1;
 
+enum STATES
+{
+  MAIN_YEAR,
+  MAIN_MONTH,
+  MAIN_DAY,
+  MAIN_WEEKDAY,
+  MAIN_HOUR,
+  MAIN_MINUTE,
+  MAIN_SECOND,
+};
+
+void setupButtons() {
+  button1.setDebounce(10); // 80
+  button1.setTimeout(500); // 500
+  button1.setClickTimeout(0); // 300
+  button2.setDebounce(10); // 80
+  button2.setTimeout(500); // 500
+  button2.setClickTimeout(0); // 300
+  button3.setDebounce(10); // 80
+  button3.setTimeout(500); // 500
+  button3.setClickTimeout(0); // 300
+}
+
+void resetButtons() {
+  button1.resetStates();
+  button2.resetStates();
+  button3.resetStates();
+}
 // УДАЛИ
 long time2sec(byte h, byte m, byte s) {
   return h * 60 + m * 60 + s;
@@ -128,7 +163,18 @@ bool secPassed() {
 void UpdateTime() {
   if (secPassed())
   {
-    if (timer.isPaused == false) decSec(timer.time);
+    if (!timer.isPaused && !timer.isEnded) {
+      if (!decSec(timer.time)) {
+        timer.isEnded = true;
+        timer.isPaused = false;
+      }
+    }
+    if (!stopwatch.isPaused && stopwatch.isStarted) {
+      if (!incSec(stopwatch.time)) {
+        stopwatch.isStarted = false;
+        stopwatch.isPaused = true;
+      }
+    }
   }
 }
 
@@ -163,19 +209,19 @@ void drawWordUnderline(byte x, byte y, const char* word) {
 void showState(byte state, byte x, byte y, byte weekDay) {
   switch (state)
   {
-  case 0: display.drawLine(x + 84, y + 45, x + 105, y + 45, SSD1306_WHITE); // year
+  case MAIN_YEAR: display.drawLine(x + 84, y + 45, x + 105, y + 45, SSD1306_WHITE); // year
     break;
-  case 1: display.drawLine(x + 48, y + 45, x + 69, y + 45, SSD1306_WHITE); // month
+  case MAIN_MONTH: display.drawLine(x + 48, y + 45, x + 69, y + 45, SSD1306_WHITE); // month
     break;
-  case 2: display.drawLine(x + 12, y + 45, x + 33, y + 45, SSD1306_WHITE); // day
+  case MAIN_DAY: display.drawLine(x + 12, y + 45, x + 33, y + 45, SSD1306_WHITE); // day
     break;
-  case 3: drawWordUnderline(getCenterPosX(weekDays[weekDay - 1]), y + 50, weekDays[weekDay - 1]); // week day
+  case MAIN_WEEKDAY: drawWordUnderline(getCenterPosX(weekDays[weekDay - 1]), y + 50, weekDays[weekDay - 1]); // week day
     break;
-  case 4: display.drawLine(x, y + 24, x + 32, y + 24, SSD1306_WHITE); // hour
+  case MAIN_HOUR: display.drawLine(x, y + 24, x + 32, y + 24, SSD1306_WHITE); // hour
     break;
-  case 5: display.drawLine(x + 54, y + 24, x + 86, y + 24, SSD1306_WHITE); // minute
+  case MAIN_MINUTE: display.drawLine(x + 54, y + 24, x + 86, y + 24, SSD1306_WHITE); // minute
     break;
-  case 6: display.drawLine(x + 94, y + 24, x + 114, y + 24, SSD1306_WHITE); // second
+  case MAIN_SECOND: display.drawLine(x + 94, y + 24, x + 114, y + 24, SSD1306_WHITE); // second
     break;
   }
 }
@@ -247,6 +293,8 @@ void showGeneral(const char* text, TimeInfo time, byte state) {
   byte posX = getCenterPosX(text);
   display.setCursor(posX, 0);
   display.print(text);
+
+  showState(state, x, y, -1);
   display.display();
 }
 
@@ -273,12 +321,18 @@ TimeInfo getTimeSnapshot() {
 }
 
 void setTime() {
+  resetButtons();
   FullTimeInfo time = getFullTimeSnapshot();
-  int state = 0;
+  int state = MAIN_YEAR;
   while (true)
   {
     tickbuttons();
-    if (button1.isPress())
+    if (button1.isHold())
+    {
+      time = {};
+      state = MAIN_HOUR;
+    }
+    else if (button1.isPress())
     {
       if (state == 6)
       {
@@ -300,11 +354,11 @@ void setTime() {
     {
       switch (state)
       {
-      case 0: inc(time.year, 0, 99);
+      case MAIN_YEAR: inc(time.year, 0, 99);
         break;
-      case 1: inc(time.month, 1, 12);
+      case MAIN_MONTH: inc(time.month, 1, 12);
         break;
-      case 2:
+      case MAIN_DAY:
         if (time.month == 2 && isleapYear(time.year + 2000))
         {
           inc(time.day, 1, 29);
@@ -314,13 +368,13 @@ void setTime() {
           inc(time.day, 1, daysInMonth[time.month - 1]);
         }
         break;
-      case 3: inc(time.weekDay, 1, 7);
+      case MAIN_WEEKDAY: inc(time.weekDay, 1, 7);
         break;
-      case 4: inc(time.hour, 1, 23);
+      case MAIN_HOUR: inc(time.hour, 0, 23);
         break;
-      case 5: inc(time.minute, 1, 59);
+      case MAIN_MINUTE: inc(time.minute, 0, 59);
         break;
-      case 6: inc(time.second, 1, 59);
+      case MAIN_SECOND: inc(time.second, 0, 59);
         break;
       }
     }
@@ -328,11 +382,11 @@ void setTime() {
     {
       switch (state)
       {
-      case 0: dec(time.year, 0, 99);
+      case MAIN_YEAR: dec(time.year, 0, 99);
         break;
-      case 1: dec(time.month, 1, 12);
+      case MAIN_MONTH: dec(time.month, 1, 12);
         break;
-      case 2:
+      case MAIN_DAY:
         if (time.month == 2 && isleapYear(time.year + 2000))
         {
           dec(time.day, 1, 29);
@@ -342,13 +396,13 @@ void setTime() {
           dec(time.day, 1, daysInMonth[time.month - 1]);
         }
         break;
-      case 3: dec(time.weekDay, 1, 7);
+      case MAIN_WEEKDAY: dec(time.weekDay, 1, 7);
         break;
-      case 4: dec(time.hour, 1, 23);
+      case MAIN_HOUR: dec(time.hour, 0, 23);
         break;
-      case 5: dec(time.minute, 1, 59);
+      case MAIN_MINUTE: dec(time.minute, 0, 59);
         break;
-      case 6: dec(time.second, 1, 59);
+      case MAIN_SECOND: dec(time.second, 0, 59);
         break;
       }
     }
@@ -356,42 +410,129 @@ void setTime() {
   }
 }
 
+void setTimer(TimeInfo time = {}) {
+  resetButtons();
+  int state = MAIN_HOUR;
+  secPassed();
+  while (true)
+  {
+    tickbuttons();
+    if (button1.isHold())
+    {
+      time = {};
+      state = MAIN_HOUR;
+    }
+    else if (button1.isSingle())
+    {
+      if (state == MAIN_SECOND)
+      {
+        timer.time = time;
+        timer.isEnded = false;
+        timer.isPaused = false;
+
+        showGeneral("Sync...", time, state);
+        while (!secPassed());
+        return;
+      }
+      state++;
+    }
+    else if (button2.isSingle())
+    {
+      switch (state)
+      {
+      case MAIN_HOUR: inc(time.hour, 0, 23);
+        break;
+      case MAIN_MINUTE: inc(time.minute, 0, 59);
+        break;
+      case MAIN_SECOND: inc(time.second, 0, 59);
+        break;
+      }
+    }
+    else if (button3.isSingle())
+    {
+      switch (state)
+      {
+      case MAIN_HOUR: dec(time.hour, 0, 23);
+        break;
+      case MAIN_MINUTE: dec(time.minute, 0, 59);
+        break;
+      case MAIN_SECOND: dec(time.second, 0, 59);
+        break;
+      }
+    }
+    showGeneral("Timer", time, state);
+  }
+}
+
 void mainMenu() {
+  resetButtons();
   while (true)
   {
     showTime();
     tickbuttons();
-    if (button1.isPress()) setTime();
-    else if (button2.isPress()) return;
-    else if (button3.isPress()) return;
+    if (button1.isSingle()) setTime();
+    else if (button2.isSingle()) return;
+    else if (button3.isSingle()) return;
   }
 }
 
 void timerMenu() {
+  resetButtons();
   while (true)
   {
     UpdateTime();
-    showGeneral("Timer", timer.time, -1);
+    if (timer.isPaused) showGeneral("Timer(psd)", timer.time, -1);
+    else showGeneral("Timer", timer.time, -1);
     tickbuttons();
-    if (button1.isPress()) setTime();
-    else if (button2.isPress()) return;
-    else if (button3.isPress()) return;
+    if (button1.isHold()) setTimer(timer.time);
+    else if (button1.isSingle()) {
+      if (timer.isEnded) setTimer(timer.time);
+      else timer.isPaused = timer.isPaused ? false : true;
+    }
+    else if (button2.isSingle()) return;
+    else if (button3.isSingle()) return;
+  }
+}
+
+void stopwatchMenu() {
+  resetButtons();
+  while (true)
+  {
+    UpdateTime();
+    if (stopwatch.isPaused && stopwatch.isStarted) showGeneral("Stwch psd", stopwatch.time, -1);
+    else showGeneral("Stopwatch", stopwatch.time, -1);
+    tickbuttons();
+    if (button1.isHold()) { 
+      stopwatch.isStarted = false;
+      stopwatch.time = {}; 
+    }
+    else if (button1.isSingle()) {
+      if (stopwatch.isStarted)
+      {
+        stopwatch.isPaused = stopwatch.isPaused ? false : true;
+      }
+      stopwatch.isStarted = true; 
+    }
+    else if (button2.isSingle()) return;
+    else if (button3.isSingle()) return;
   }
 }
 
 void setup() {
   Serial.begin(9600);
+
   display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
   display.setTextColor(SSD1306_WHITE);
   display.clearDisplay();
+  display.display();
+
+  setupButtons();
   DS3231 test;
   test.setHour(23); test.setMinute(9); test.setSecond(54);
-  timer.time = { 0,5,0 };
-  timerMenu();
 }
 
 void loop() {
-  showTime();
-  tickbuttons();
-  if (button1.isPress()) setTime();
+  stopwatchMenu();
+  timerMenu();
+  mainMenu();
 }

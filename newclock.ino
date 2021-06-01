@@ -6,6 +6,8 @@
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1306.h"
 
+#include <Thread.h>
+
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -15,9 +17,11 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 RTClib RTC;
 DS3231 DS;
 
-GButton button1(10);
-GButton button2(9);
-GButton button3(8);
+GButton button1(8);
+GButton button2(6);
+GButton button3(5);
+
+#define BUZZ_PIN 9
 
 #define CL_CENTER_X 4
 #define CL_CENTER_Y 4
@@ -45,12 +49,12 @@ struct TimeInfo
   byte second;
 };
 
-struct
+struct InterruptClock
 {
   TimeInfo time{};
   bool isPaused = false;
-  bool isEnded = true;
-} timer;
+  bool isDisabled = true;
+} timer, alarm;
 
 struct
 {
@@ -76,6 +80,7 @@ enum MENUS
   MENU_MAIN,
   MENU_STOPWATCH,
   MENU_TIMER,
+  MENU_ALARM,
   MENU_LAST,
 };
 
@@ -152,13 +157,18 @@ bool secPassed() {
   return false;
 }
 
+bool compareTime(TimeInfo t1, TimeInfo t2) {
+  if (t1.hour == t2.hour && t1.minute == t2.minute && t1.second == t2.second) return true;
+  else return false;
+}
 void updateTime() {
   if (secPassed())
   {
-    if (!timer.isPaused && !timer.isEnded) {
+    if (!timer.isPaused && !timer.isDisabled) {
       if (!decSec(timer.time)) {
-        timer.isEnded = true;
+        timer.isDisabled = true;
         timer.isPaused = false;
+        CheckMenu("Timer", "Ended!", timer.time);
       }
     }
     if (!stopwatch.isPaused && stopwatch.isStarted) {
@@ -167,12 +177,15 @@ void updateTime() {
         stopwatch.isPaused = true;
       }
     }
+    if (!alarm.isDisabled && !alarm.isPaused && compareTime(getTimeSnapshot(), alarm.time)) {
+      CheckMenu("Alarm", "Ended!", alarm.time);
+    }
   }
 }
 
 void checkTime() {
   updateTime();
-  if (timer.isEnded)
+  if (timer.isDisabled)
   {
 
   }
@@ -324,12 +337,13 @@ TimeInfo getTimeSnapshot() {
   return time;
 }
 
-void setTime() {
+void setMainTime() {
   resetButtons();
   FullTimeInfo time = getFullTimeSnapshot();
   int state = MAIN_YEAR;
   while (true)
   {
+    updateTime();
     tickbuttons();
     if (button1.isHold())
     {
@@ -415,12 +429,14 @@ void setTime() {
   }
 }
 
-void setTimer(TimeInfo time = {}) {
+InterruptClock setTime(const char* Text, TimeInfo time = {}) {
+  InterruptClock clock;
   resetButtons();
   int state = MAIN_HOUR;
   secPassed();
   while (true)
   {
+    updateTime();
     tickbuttons();
     if (button1.isHold())
     {
@@ -431,14 +447,14 @@ void setTimer(TimeInfo time = {}) {
     {
       if (state == MAIN_SECOND)
       {
-        timer.time = time;
-        timer.isEnded = false;
-        timer.isPaused = false;
+        clock.time = time;
+        clock.isDisabled = false;
+        clock.isPaused = false;
 
-        showGeneral("Timer", "Sync...", time, state);
+        showGeneral(Text, "Sync...", time, state);
         while (!secPassed());
         resetButtons();
-        return;
+        return clock;
       }
       state++;
     }
@@ -466,7 +482,7 @@ void setTimer(TimeInfo time = {}) {
         break;
       }
     }
-    showGeneral("Timer", "Editing", time, state);
+    showGeneral(Text, "Editing", time, state);
   }
 }
 
@@ -474,9 +490,10 @@ void mainMenu() {
   resetButtons();
   while (true)
   {
+    updateTime();
     showTime();
     tickbuttons();
-    if (button1.isSingle()) setTime();
+    if (button1.isSingle()) setMainTime();
     else if (button2.isSingle()) {
       dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
       return;
@@ -494,12 +511,12 @@ void timerMenu() {
   {
     updateTime();
     if (timer.isPaused) showGeneral("Timer", "Paused", timer.time, -1);
-    else if (timer.isEnded) showGeneral("Timer", "Ended", timer.time, -1);
+    else if (timer.isDisabled) showGeneral("Timer", "Ended", timer.time, -1);
     else showGeneral("Timer", "Running", timer.time, -1);
     tickbuttons();
-    if (button1.isHold()) setTimer(timer.time);
+    if (button1.isHold()) timer = setTime("Timer", timer.time);
     else if (button1.isSingle()) {
-      if (timer.isEnded) setTimer(timer.time);
+      if (timer.isDisabled) timer = setTime("Timer", timer.time);
       else timer.isPaused = timer.isPaused ? false : true;
     }
     else if (button2.isSingle()) {
@@ -544,12 +561,45 @@ void stopwatchMenu() {
   }
 }
 
+void alarmMenu() {
+  resetButtons();
+  while (true)
+  {
+    updateTime();
+    if (alarm.isDisabled) showGeneral("Alarm", "Disabled", alarm.time, -1);
+    else showGeneral("Alarm", "Enabled", alarm.time, -1);
+    tickbuttons();
+    if (button1.isHold()) alarm = setTime("Alarm", alarm.time);
+    else if (button1.isSingle()) alarm.isDisabled = alarm.isDisabled ? false : true;
+    else if (button2.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+    else if (button3.isSingle()) {
+      inc(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+  }
+}
+
+void CheckMenu(const char* upText, const char* downText, TimeInfo time) {
+  while (true)
+  {
+    updateTime();
+    showGeneral(upText, downText, time, -1);
+    tickbuttons();
+    if (button1.isSingle() || button2.isSingle() || button3.isSingle()) return;
+  }
+}
+
 void setup() {
   Serial.begin(9600);
+  pinMode(BUZZ_PIN, OUTPUT);
 
   display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
   display.setTextColor(SSD1306_WHITE);
   display.clearDisplay();
+  display.setRotation(2);
   display.display();
 
   setupButtons();
@@ -565,6 +615,8 @@ void loop() {
   case MENU_STOPWATCH: stopwatchMenu();
     break;
   case MENU_TIMER: timerMenu();
+    break;
+  case MENU_ALARM: alarmMenu();
     break;
   }
 }

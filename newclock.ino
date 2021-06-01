@@ -6,8 +6,6 @@
 #include "Adafruit_GFX.h"
 #include "Adafruit_SSD1306.h"
 
-#include <Thread.h>
-
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -87,6 +85,13 @@ enum MENUS
 byte psec = -1;
 byte menuState = MENU_MAIN;
 
+void playSound() {
+  static long soundTime;
+  if (millis() - soundTime > 650) {
+    tone(BUZZ_PIN, 500, 400);
+    soundTime = millis();
+  }
+}
 void setupButtons() {
   button1.setDebounce(10); // 80
   button1.setTimeout(500); // 500
@@ -161,6 +166,7 @@ bool compareTime(TimeInfo t1, TimeInfo t2) {
   if (t1.hour == t2.hour && t1.minute == t2.minute && t1.second == t2.second) return true;
   else return false;
 }
+
 void updateTime() {
   if (secPassed())
   {
@@ -180,14 +186,6 @@ void updateTime() {
     if (!alarm.isDisabled && !alarm.isPaused && compareTime(getTimeSnapshot(), alarm.time)) {
       CheckMenu("Alarm", "Ended!", alarm.time);
     }
-  }
-}
-
-void checkTime() {
-  updateTime();
-  if (timer.isDisabled)
-  {
-
   }
 }
 
@@ -585,6 +583,7 @@ void alarmMenu() {
 void CheckMenu(const char* upText, const char* downText, TimeInfo time) {
   while (true)
   {
+    playSound();
     updateTime();
     showGeneral(upText, downText, time, -1);
     tickbuttons();

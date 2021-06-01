@@ -52,7 +52,7 @@ struct InterruptClock
   TimeInfo time{};
   bool isPaused = false;
   bool isDisabled = true;
-} timer, alarm;
+} timer, alarm, pomodoro;
 
 struct
 {
@@ -60,6 +60,9 @@ struct
   bool isPaused = false;
   bool isStarted = false;
 } stopwatch;
+
+byte pomodoroCount = 1;
+bool pomodoroRest = false;
 
 enum STATES
 {
@@ -79,14 +82,15 @@ enum MENUS
   MENU_STOPWATCH,
   MENU_TIMER,
   MENU_ALARM,
+  MENU_POMODORO,
   MENU_LAST,
 };
 
 byte psec = -1;
 byte menuState = MENU_MAIN;
 
+long soundTime = 0;
 void playSound() {
-  static long soundTime;
   if (millis() - soundTime > 650) {
     tone(BUZZ_PIN, 500, 400);
     soundTime = millis();
@@ -186,6 +190,34 @@ void updateTime() {
     if (!alarm.isDisabled && !alarm.isPaused && compareTime(getTimeSnapshot(), alarm.time)) {
       CheckMenu("Alarm", "Ended!", alarm.time);
     }
+    if (!pomodoro.isPaused && !pomodoro.isDisabled) {
+      if (!decSec(pomodoro.time)) {
+        pomodoro.isDisabled = true;
+        pomodoro.isPaused = false;
+        if (pomodoroRest)
+        {
+          if (pomodoroCount == 4) {
+            pomodoroCount = 1;
+            pomodoro.time = { 0,30, 0}; // 0 30 0
+          }
+          else
+          {
+            pomodoroCount++;
+            pomodoro.time = { 0,5, 0 }; // 0 5 0
+          }
+          CheckMenu("Pomodoro", "Now rest!", pomodoro.time);
+          pomodoro.isDisabled = false;
+          pomodoroRest = false;
+        }
+        else
+        {
+          pomodoro.time = { 0,25,0 }; // 0 25 0
+          CheckMenu("Pomodoro", "Now work!", pomodoro.time);
+          pomodoro.isDisabled = false;
+          pomodoroRest = false;
+        }
+      }
+    }
   }
 }
 
@@ -194,6 +226,7 @@ inline void tickbuttons() {
   button2.tick();
   button3.tick();
 }
+
 void inc(byte& var, byte min, byte max) {
   if (var >= max) var = min;
   else var++;
@@ -382,7 +415,7 @@ void setMainTime() {
         }
         else
         {
-          inc(time.day, 1, daysInMonth[time.month - 1]);
+          inc(time.day, 1,daysInMonth[time.month - 1]);
         }
         break;
       case MAIN_WEEKDAY: inc(time.weekDay, 1, 7);
@@ -410,7 +443,7 @@ void setMainTime() {
         }
         else
         {
-          dec(time.day, 1, daysInMonth[time.month - 1]);
+          dec(time.day, 1,daysInMonth[time.month - 1]);
         }
         break;
       case MAIN_WEEKDAY: dec(time.weekDay, 1, 7);
@@ -591,6 +624,41 @@ void CheckMenu(const char* upText, const char* downText, TimeInfo time) {
   }
 }
 
+void pomodoroMenu() {
+  resetButtons();
+  while (true)
+  {
+    updateTime();
+    if (pomodoro.isPaused && !pomodoro.isDisabled) showGeneral("Pomodoro", "Paused", pomodoro.time, -1);
+    else if (pomodoro.isDisabled) showGeneral("Pomodoro", "Waiting", pomodoro.time, -1);
+    else if (pomodoroRest)showGeneral("Pomodoro", "Rest ^-^", pomodoro.time, -1);
+    else showGeneral("Pomodoro", "Work >.<", pomodoro.time, -1);
+    tickbuttons();
+    if (button1.isHold()) {
+      pomodoroCount = 1;
+      pomodoroRest = false;
+      pomodoro.time = {};
+      pomodoro.isDisabled = false;
+
+    }
+    else if (button1.isSingle()) {
+      if (!pomodoro.isDisabled)
+      {
+        pomodoro.isPaused = pomodoro.isPaused ? false : true;
+      }     
+      pomodoro.isDisabled = false;
+
+    }
+    else if (button2.isSingle()) {
+      dec(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+    else if (button3.isSingle()) {
+      inc(menuState, MENU_FIRST + 1, MENU_LAST - 1);
+      return;
+    }
+  }
+}
 void setup() {
   Serial.begin(9600);
   pinMode(BUZZ_PIN, OUTPUT);
@@ -607,15 +675,9 @@ void setup() {
 }
 
 void loop() {
-  switch (menuState)
-  {
-  case MENU_MAIN: mainMenu();
-    break;
-  case MENU_STOPWATCH: stopwatchMenu();
-    break;
-  case MENU_TIMER: timerMenu();
-    break;
-  case MENU_ALARM: alarmMenu();
-    break;
-  }
+  if (menuState == MENU_MAIN) mainMenu();
+  else if (menuState == MENU_STOPWATCH) stopwatchMenu();
+  else if (menuState == MENU_TIMER) timerMenu();
+  else if (menuState == MENU_ALARM) alarmMenu();
+  else if (menuState == MENU_POMODORO) pomodoroMenu();
 }
